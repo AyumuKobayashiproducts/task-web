@@ -1,115 +1,114 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Task = {
-  id: number;
+  id: string;
   text: string;
   done: boolean;
 };
 
-const STORAGE_KEY = "tasks";
-
 export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    if (typeof window === "undefined") {
-      return [];
-    }
-
-    const savedTasks = localStorage.getItem(STORAGE_KEY);
-
-    if (savedTasks) {
-      return JSON.parse(savedTasks);
-    }
-
-    return [];
-  });
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
+  const fetchTasks = async () => {
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .order("created_at", { ascending: true });
 
-  const addTask = () => {
+    if (error) {
+      console.error("Supabase fetch error:", error.message, error.details, error.hint, error.code);
+      return;
+    }
+
+    setTasks(data ?? []);
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const addTask = async () => {
     if (!input) return;
 
-    const newTask: Task = {
-      id: Date.now(),
+    const { error } = await supabase.from("tasks").insert({
       text: input,
       done: false,
-    };
+    });
 
-    setTasks([...tasks, newTask]);
+    if (error) {
+      console.error("Supabase insert error:", error.message, error.details, error.hint, error.code);
+      return;
+    }
+
     setInput("");
+    fetchTasks();
   };
 
-  const toggleTask = (task: Task) => {
-    setTasks(
-      tasks.map((currentTask) =>
-        currentTask.id === task.id
-          ? { ...currentTask, done: !currentTask.done }
-          : currentTask
-      )
-    );
+  const toggleTask = async (task: Task) => {
+    const { error } = await supabase
+      .from("tasks")
+      .update({ done: !task.done })
+      .eq("id", task.id);
+
+    if (error) {
+      console.error("Supabase update error:", error.message, error.details, error.hint, error.code);
+      return;
+    }
+
+    fetchTasks();
   };
 
-  const deleteTask = (id: number) => {
-    setTasks(tasks.filter((task) => task.id !== id));
+  const deleteTask = async (id: string) => {
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+
+    if (error) {
+      console.error("Supabase delete error:", error.message, error.details, error.hint, error.code);
+      return;
+    }
+
+    fetchTasks();
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white p-6">
-      <div className="mx-auto max-w-2xl">
-        <h1 className="text-4xl font-bold mb-2">AI Task App</h1>
+    <div className="p-4">
+      <h1 className="text-xl font-bold">Task App</h1>
 
-        <div className="flex gap-3 mb-8">
-          <input
-            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-white"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") addTask();
-            }}
-            placeholder="タスクを入力"
-          />
+      <input
+        className="border p-2 mr-2"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+      />
 
-          <button
-            className="rounded-xl bg-blue-600 px-6 py-3 font-bold"
-            onClick={addTask}
-          >
-            Add
-          </button>
-        </div>
+      <button className="bg-blue-500 text-white p-2" onClick={addTask}>
+        Add
+      </button>
 
-        <ul className="space-y-3">
-          {tasks.map((task) => (
-            <li
-              key={task.id}
-              className="flex justify-between bg-zinc-900 p-4 rounded-xl"
+      <ul className="mt-4">
+        {tasks.map((task) => (
+          <li key={task.id} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={task.done}
+              onChange={() => toggleTask(task)}
+            />
+
+            <span className={task.done ? "line-through" : ""}>
+              {task.text}
+            </span>
+
+            <button
+              className="text-red-500"
+              onClick={() => deleteTask(task.id)}
             >
-              <span className={task.done ? "line-through" : ""}>
-                {task.text}
-              </span>
-
-              <div className="flex gap-2">
-                <button
-                  className="bg-green-600 px-2"
-                  onClick={() => toggleTask(task)}
-                >
-                  完了
-                </button>
-
-                <button
-                  className="bg-red-600 px-2"
-                  onClick={() => deleteTask(task.id)}
-                >
-                  削除
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </main>
+              削除
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
